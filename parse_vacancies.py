@@ -84,7 +84,7 @@ def parse_vac(data: list):
                     all_skill += f'{skill.text};'
             except:
                 all_skill = "Не указано"
-            with open('vacancies.csv', 'a', encoding='utf-8') as f:
+            with open('csv_files/vacancies.csv', 'a', encoding='utf-8') as f:
                 writers = csv.writer(f, delimiter=',')
                 writers.writerow(
                     [element[1], element[0], title, salary, company_name, city, description, all_skill, name_of_contact,

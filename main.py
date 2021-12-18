@@ -36,7 +36,7 @@ def create_driver():
 def clean_file():
     """Очистка файла"""
 
-    with open('new_links.csv', 'w') as f:
+    with open('csv_files/new_links.csv', 'w') as f:
         f.truncate()
     logging.info('Файл очищен')
 
@@ -45,10 +45,10 @@ def vacancies_processes():
     """Создание процессов для парсинга вакансий"""
     logging.info('Парсинг вакансий начался')
     pool = mp.Pool(processes=6)
-
-    data = list(csv.reader(open('already_sorted.csv', 'r', encoding='utf-8'), delimiter=','))
+    with open('csv_files/already_sorted.csv', 'r', encoding='utf-8') as file:
+        data = list(csv.reader(file, delimiter=','))
     new_separator = round(len(data) / 6)
-    with open('vacancies.csv', 'a', encoding='utf-8') as f:
+    with open('csv_files/vacancies.csv', 'a', encoding='utf-8') as f:
         writer = csv.writer(f, delimiter=',')
         writer.writerow(
             ['Отрасль компании', 'Ссылка', 'Название вакансии', 'Зарплата', 'Компания', 'Город', 'Описание вакансии',
@@ -69,7 +69,8 @@ def link_processes():
     """Создание процессов для функции extract_links"""
     logging.info('Парсинг ссылок начался')
 
-    links = list(csv.reader(open('industries.csv', 'r', encoding='utf-8'), delimiter=','))
+    with open('csv_files/industries.csv', 'r', encoding='utf-8') as file:
+        links = csv.reader(file, delimiter=',')
     pool = mp.Pool(processes=6)
     pool.map(extract_links, [links[0:10], links[10:20], links[20:25], links[25:34], links[34:36], links[36:]])
     logging.info('Ссылки спаршены')
@@ -79,7 +80,7 @@ def from_csv_to_xlsx():
     """Конвертация с csv в xlsx"""
     logging.info('Начало конвертации')
 
-    for csvfile in glob.glob(os.path.join('.', 'vacancies.csv')):
+    for csvfile in glob.glob(os.path.join('.', 'csv_files/vacancies.csv')):
         workbook = Workbook(csvfile[:-4] + '.xlsx')
         worksheet = workbook.add_worksheet()
         with open(csvfile, 'rt', encoding='utf8') as f:
@@ -130,7 +131,7 @@ def extract_links(data):
                         mylist.append([html, reference[1]])
                 except AttributeError:
                     pass
-    with open('new_links.csv', 'a', newline='', encoding='utf-8') as f:  # записываем все собранные сылки в лс
+    with open('csv_files/new_links.csv', 'a', newline='', encoding='utf-8') as f:  # записываем все собранные сылки в лс
         writer = csv.writer(f, delimiter=',')
         for item in mylist:
             writer.writerow(item)

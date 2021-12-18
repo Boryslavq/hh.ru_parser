@@ -1,20 +1,98 @@
-import logging
-import time
-
-from selenium import webdriver
-from selenium.webdriver import DesiredCapabilities
 import csv
+import glob
+import logging
 import multiprocessing as mp
 import os
-import glob
-import csv
+import time
+
+import requests
+from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver import DesiredCapabilities
 from xlsxwriter.workbook import Workbook
+
+from parse_vacancies import parse_vac
+from sorted_vacancies import sort_vac
+
+
+def create_driver():
+    caps = DesiredCapabilities().CHROME
+    caps["pageLoadStrategy"] = "eager"
+    options = webdriver.ChromeOptions()
+
+    options.add_argument(
+        'user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)'
+        ' Chrome/95.0.4638.69 Safari/537.36')
+
+    options.add_argument('--disable-blink-features=AutomationControlled')
+
+    driver = webdriver.Chrome(
+        options=options,
+        desired_capabilities=caps)
+    return driver
+
+
+def clean_file():
+    """Очистка файла"""
+
+    with open('new_links.csv', 'w') as f:
+        f.truncate()
+    logging.info('Ссылки отсортированы')
+
+
+def vacancies_processes():
+    """Создание процессов для парсинга вакансий"""
+    logging.info('Парсинг вакансий начался')
+    pool = mp.Pool(processes=6)
+
+    data = list(csv.reader(open('already_sorted.csv', 'r', encoding='utf-8'), delimiter=','))
+    new_separator = round(len(data) / 6)
+    with open('vacancies.csv', 'a', encoding='utf-8') as f:
+        writer = csv.writer(f, delimiter=',')
+        writer.writerow(
+            ['Отрасль компании', 'Ссылка', 'Название вакансии', 'Зарплата', 'Компания', 'Город', 'Описание вакансии',
+             'Навыки',
+             'Имя', 'Телефон', 'Email'])
+    pool.map(parse_vac,
+             [data[0:new_separator], data[new_separator:new_separator * 2],
+              data[new_separator * 2:new_separator * 3],
+              data[new_separator * 3:new_separator * 4],
+              data[new_separator * 4:new_separator * 5],
+              data[new_separator * 5:]])
+    pool.close()
+    pool.join()
+    logging.info('Парсинг окончен')
+
+
+def link_processes():
+    """Создание процессов для функции extract_links"""
+    logging.info('Парсинг ссылок начался')
+
+    links = list(csv.reader(open('industries.csv', 'r', encoding='utf-8'), delimiter=','))
+    pool = mp.Pool(processes=6)
+    pool.map(extract_links, [links[0:10], links[10:20], links[20:25], links[25:34], links[34:36], links[36:]])
+    logging.info('Ссылки спаршены')
+
+
+def from_csv_to_xlsx():
+    """Конвертация с csv в xlsx"""
+    logging.info('Начало конвертации')
+
+    for csvfile in glob.glob(os.path.join('.', 'vacancies.csv')):
+        workbook = Workbook(csvfile[:-4] + '.xlsx')
+        worksheet = workbook.add_worksheet()
+        with open(csvfile, 'rt', encoding='utf8') as f:
+            reader = csv.reader(f)
+            for r, row in enumerate(reader):
+                for c, col in enumerate(row):
+                    worksheet.write(r, c, col)
+        workbook.close()
+    logging.info('Конвертация прошла успешно')
 
 
 def get_page(reference):
-    # функция для того что бы узнать количество страниц для той или иной вакансии
-    import requests
-    from bs4 import BeautifulSoup
+    """Функция для того что бы узнать количество страниц для той или иной вакансии"""
+
     headers = {
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                       ' (KHTML, like Gecko) Chrome/95.0.4638.69 Safari/537.36'
@@ -30,22 +108,9 @@ def get_page(reference):
         return 1
 
 
-def main(data):
-    caps = DesiredCapabilities().CHROME
-    caps["pageLoadStrategy"] = "eager"
-    options = webdriver.ChromeOptions()
-
-    options.add_argument(
-        'user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)'
-        ' Chrome/95.0.4638.69 Safari/537.36')
-
-    options.add_argument('--disable-blink-features=AutomationControlled')
-    options.headless = True
-
-    driver = webdriver.Chrome(
-        options=options,
-        desired_capabilities=caps)
-
+def extract_links(data):
+    """ Функция для извлечения всех ссылок со страницы"""
+    driver = create_driver()
     mylist = []
     count1 = 0
     for reference in data:
@@ -68,69 +133,19 @@ def main(data):
         writer = csv.writer(f, delimiter=',')
         for item in mylist:
             writer.writerow(item)
-
+    logging.info('Ссылки собраны')
     driver.quit()
 
 
+def main():
+    logging.info('Парсинг начался')
+    link_processes()
+    sort_vac()
+    from_csv_to_xlsx()
+    vacancies_processes()
+    clean_file()
+    logging.info('Парсинг окончен')
+
+
 if __name__ == "__main__":
-    from parse_vacansies import parse_vac
-
-    links = list(csv.reader(open('industries.csv', 'r', encoding='utf-8'), delimiter=','))
-    pool = mp.Pool(processes=6)
-    pool.map(main, [links[0:10], links[10:20], links[20:25], links[25:34], links[34:36], links[36:]])
-    print('Ссылки спаршены')
-    import csv
-
-    new_data = list(csv.reader(open('new_links.csv', 'r', encoding='utf-8')))
-    old_data = list(csv.reader(open('old_links.csv', 'r', encoding='utf-8')))
-
-    new_file = []
-    for info in new_data:
-        if info not in old_data:
-            old_data.append(info)
-            new_file.append(info)
-
-    with open('old_links.csv', 'w', newline='', encoding='utf-8') as file:
-        write = csv.writer(file)
-        for i in old_data:
-            write.writerow(i)
-
-    with open('already_sorted.csv', 'w', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        for i in new_file:
-            writer.writerow(i)
-
-    print('Отсортировано')
-
-    data = list(csv.reader(open('already_sorted.csv', 'r', encoding='utf-8'), delimiter=','))
-
-    new_separator = round(len(data) / 6)
-    with open('vacancies.csv', 'a', encoding='utf-8') as f:
-        writer = csv.writer(f, delimiter=',')
-        writer.writerow(
-            ['Отрасль компании', 'Ссылка', 'Название вакансии', 'Зарплата', 'Компания', 'Город', 'Описание вакансии',
-             'Навыки',
-             'Имя', 'Телефон', 'Email'])
-    pool.map(parse_vac,
-             [data[0:new_separator], data[new_separator:new_separator * 2],
-              data[new_separator * 2:new_separator * 3],
-              data[new_separator * 3:new_separator * 4],
-              data[new_separator * 4:new_separator * 5],
-              data[new_separator * 5:]])
-    pool.close()
-    pool.join()
-    for csvfile in glob.glob(os.path.join('.', 'vacancies.csv')):
-        workbook = Workbook(csvfile[:-4] + '.xlsx')
-        worksheet = workbook.add_worksheet()
-        with open(csvfile, 'rt', encoding='utf8') as f:
-            reader = csv.reader(f)
-            for r, row in enumerate(reader):
-                for c, col in enumerate(row):
-                    worksheet.write(r, c, col)
-        workbook.close()
-
-    print('Парсинг окончен')
-
-    q = open("new_links.csv", "w")
-    q.truncate()
-    q.close()
+    main()

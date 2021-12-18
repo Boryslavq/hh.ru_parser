@@ -37,7 +37,7 @@ def clean_file():
 
     with open('new_links.csv', 'w') as f:
         f.truncate()
-    logging.info('Ссылки отсортированы')
+    logging.info('Файл очищен')
 
 
 def vacancies_processes():
